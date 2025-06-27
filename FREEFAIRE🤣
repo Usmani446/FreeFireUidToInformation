@@ -1,0 +1,1000 @@
+<?php
+$playerData = null;
+$error = null;
+
+// Function to fetch item details from the icon API
+function fetchItemDetails($itemId) {
+    if (empty($itemId)) return null;
+    
+    $iconApiUrl = "https://freefireicon.backtonep.workers.dev/?id=" . $itemId;
+    $context = stream_context_create([
+        'http' => [
+            'timeout' => 5,
+            'method' => 'GET',
+            'header' => 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        ]
+    ]);
+    
+    $response = @file_get_contents($iconApiUrl, false, $context);
+    if ($response !== false) {
+        $itemData = json_decode($response, true);
+        if (json_last_error() === JSON_ERROR_NONE && isset($itemData['image_url'])) {
+            return $itemData;
+        }
+    }
+    return null;
+}
+
+// Function to get multiple item details with caching
+function getItemsDetails($itemIds) {
+    static $cache = [];
+    $items = [];
+    
+    if (is_array($itemIds)) {
+        foreach ($itemIds as $id) {
+            if (isset($cache[$id])) {
+                $items[] = $cache[$id];
+            } else {
+                $itemDetail = fetchItemDetails($id);
+                if ($itemDetail) {
+                    $cache[$id] = $itemDetail;
+                    $items[] = $itemDetail;
+                } else {
+                    // Add placeholder for items without icons
+                    $items[] = [
+                        'id' => $id,
+                        'description' => 'Item #' . $id,
+                        'image_url' => null
+                    ];
+                }
+            }
+        }
+    }
+    return $items;
+}
+
+// Enhanced function to get single item with fallback
+function getSingleItemDetail($itemId, $itemType = 'Item') {
+    if (empty($itemId)) return null;
+    
+    $itemDetail = fetchItemDetails($itemId);
+    if ($itemDetail) {
+        return $itemDetail;
+    }
+    
+    // Return placeholder data if API fails
+    return [
+        'id' => $itemId,
+        'description' => $itemType . ' #' . $itemId,
+        'image_url' => null
+    ];
+}
+
+if (isset($_POST['uid']) && isset($_POST['region'])) {
+    $uid = htmlspecialchars($_POST['uid']);
+    $region = htmlspecialchars($_POST['region']);
+    
+    $apiUrl = "https://freefireinfo.nepcoderapis.workers.dev/?uid=" . $uid . "&region=" . $region;
+    
+    $context = stream_context_create([
+        'http' => [
+            'timeout' => 10,
+            'method' => 'GET',
+            'header' => 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        ]
+    ]);
+    
+    $response = @file_get_contents($apiUrl, false, $context);
+    
+    if ($response !== false) {
+        $playerData = json_decode($response, true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            $error = "Invalid response from API";
+        }
+    } else {
+        $error = "Failed to fetch player data. Please check the UID and try again.";
+    }
+}
+
+$servers = [
+    'bd' => 'Bangladesh',
+    'ind' => 'India', 
+    'pk' => 'Pakistan',
+    'sg' => 'Singapore',
+    'th' => 'Thailand',
+    'vn' => 'Vietnam',
+    'my' => 'Malaysia',
+    'ph' => 'Philippines',
+    'id' => 'Indonesia',
+    'br' => 'Brazil',
+    'mena' => 'Middle East & North Africa',
+    'ru' => 'Russia',
+    'us' => 'United States',
+    'latam' => 'Latin America',
+    'sa' => 'South Africa'
+];
+
+function getRankName($rank) {
+    $ranks = [
+        100 => 'Bronze I', 110 => 'Bronze II', 120 => 'Bronze III',
+        200 => 'Silver I', 210 => 'Silver II', 220 => 'Silver III',
+        300 => 'Gold I', 310 => 'Gold II', 320 => 'Gold III',
+        400 => 'Platinum I', 410 => 'Platinum II', 420 => 'Platinum III',
+        500 => 'Diamond I', 510 => 'Diamond II', 520 => 'Diamond III',
+        600 => 'Heroic', 700 => 'Grand Master'
+    ];
+    return $ranks[$rank] ?? 'Unranked';
+}
+
+function formatNumber($number) {
+    if ($number >= 1000000) {
+        return round($number / 1000000, 1) . 'M';
+    } elseif ($number >= 1000) {
+        return round($number / 1000, 1) . 'K';
+    }
+    return number_format($number);
+}
+
+function getGenderIcon($gender) {
+    return $gender === 'Gender_MALE' ? 'fas fa-mars' : 'fas fa-venus';
+}
+
+function getModePreference($mode) {
+    return $mode === 'ModePrefer_BR' ? 'Battle Royale' : 'Clash Squad';
+}
+
+function getRewardState($state) {
+    return $state === 'REWARD_STATE_UNCLAIMED' ? 'Unclaimed' : 'Claimed';
+}
+
+function getAccountTypeText($type) {
+    return $type == 1 ? 'Premium Account' : 'Guest Account';
+}
+
+// Function to display item with icon
+function displayItemWithIcon($item, $defaultIcon = 'fas fa-question', $size = 'w-16 h-16') {
+    if ($item && isset($item['image_url']) && $item['image_url']) {
+        return '<img src="' . htmlspecialchars($item['image_url']) . '" alt="' . htmlspecialchars($item['description'] ?? 'Item') . '" class="' . $size . ' object-cover rounded-lg border-2 border-white/30 shadow-lg transition-all duration-300 hover:scale-105" loading="lazy">';
+    } else {
+        return '<div class="' . $size . ' bg-gradient-to-br from-gray-400 to-gray-600 rounded-lg flex items-center justify-center border-2 border-white/30 shadow-lg transition-all duration-300 hover:scale-105"><i class="' . $defaultIcon . ' text-white text-2xl"></i></div>';
+    }
+}
+?>
+
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Free Fire Player Lookup - Complete Stats | NepDevs</title>
+    <meta name="description" content="Advanced Free Fire player statistics lookup tool with real-time data from all regions. Get comprehensive player stats, rankings, and equipment details.">
+    <meta name="keywords" content="Free Fire, player lookup, statistics, gaming, NepDevs, battle royale">
+    <meta name="author" content="NepDevs">
+    
+    <!-- Open Graph Meta Tags -->
+    <meta property="og:title" content="Free Fire Player Lookup - Complete Stats">
+    <meta property="og:description" content="Advanced Free Fire player statistics and information lookup tool">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="<?= htmlspecialchars($_SERVER['REQUEST_URI']) ?>">
+    
+    <!-- Twitter Card Meta Tags -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Free Fire Player Lookup">
+    <meta name="twitter:description" content="Get comprehensive Free Fire player statistics">
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/x-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔥</text></svg>">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;800;900&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        'orbitron': ['Orbitron', 'monospace'],
+                        'inter': ['Inter', 'sans-serif'],
+                    },
+                    animation: {
+                        'gradient': 'gradient 15s ease infinite',
+                        'float': 'float 6s ease-in-out infinite',
+                        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        'bounce-slow': 'bounce 2s infinite',
+                        'spin-slow': 'spin 6s linear infinite',
+                        'wiggle': 'wiggle 1s ease-in-out infinite',
+                        'glow': 'glow 2s ease-in-out infinite alternate',
+                        'slide-up': 'slideUp 0.5s ease-out',
+                        'fade-in': 'fadeIn 0.6s ease-out',
+                        'scale-in': 'scaleIn 0.4s ease-out',
+                        'slide-down': 'slideDown 0.3s ease-out',
+                        'zoom-in': 'zoomIn 0.3s ease-out',
+                        'shimmer': 'shimmer 2s linear infinite',
+                        'typing': 'typing 3.5s steps(40, end)',
+                        'blink': 'blink-caret .75s step-end infinite',
+                    },
+                    keyframes: {
+                        gradient: {
+                            '0%, 100%': { 'background-position': '0% 50%' },
+                            '50%': { 'background-position': '100% 50%' },
+                        },
+                        float: {
+                            '0%, 100%': { transform: 'translateY(0px)' },
+                            '50%': { transform: 'translateY(-20px)' },
+                        },
+                        wiggle: {
+                            '0%, 100%': { transform: 'rotate(-3deg)' },
+                            '50%': { transform: 'rotate(3deg)' },
+                        },
+                        glow: {
+                            '0%': { 'box-shadow': '0 0 20px rgba(255, 107, 107, 0.3)' },
+                            '100%': { 'box-shadow': '0 0 40px rgba(255, 107, 107, 0.6)' },
+                        },
+                        slideUp: {
+                            '0%': { transform: 'translateY(50px)', opacity: '0' },
+                            '100%': { transform: 'translateY(0)', opacity: '1' },
+                        },
+                        fadeIn: {
+                            '0%': { opacity: '0' },
+                            '100%': { opacity: '1' },
+                        },
+                        scaleIn: {
+                            '0%': { transform: 'scale(0.9)', opacity: '0' },
+                            '100%': { transform: 'scale(1)', opacity: '1' },
+                        },
+                        slideDown: {
+                            '0%': { transform: 'translateY(-20px)', opacity: '0' },
+                            '100%': { transform: 'translateY(0)', opacity: '1' },
+                        },
+                        zoomIn: {
+                            '0%': { transform: 'scale(0.8)', opacity: '0' },
+                            '100%': { transform: 'scale(1)', opacity: '1' },
+                        },
+                        shimmer: {
+                            '0%': { transform: 'translateX(-100%)' },
+                            '100%': { transform: 'translateX(100%)' },
+                        },
+                        typing: {
+                            '0%': { width: '0' },
+                            '100%': { width: '100%' },
+                        },
+                        'blink-caret': {
+                            '0%, 50%': { 'border-color': 'transparent' },
+                            '51%, 100%': { 'border-color': 'currentColor' },
+                        }
+                    },
+                }
+            }
+        }
+    </script>
+    
+    <style>
+        * {
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        
+        /* Enhanced Light Mode Gradient */
+        .light-gradient {
+            background: linear-gradient(-45deg, #667eea, #764ba2, #f093fb, #f5576c, #4facfe, #00f2fe);
+            background-size: 400% 400%;
+            animation: gradient 15s ease infinite;
+        }
+        
+        /* Enhanced Dark Mode Gradient */
+        .dark-gradient {
+            background: linear-gradient(-45deg, #0f0f23, #16213e, #1a1a2e, #0f3460, #16537e);
+            background-size: 400% 400%;
+            animation: gradient 15s ease infinite;
+        }
+        
+        /* Enhanced Glass Effect */
+        .glass-light {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.9);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+        
+        .glass-dark {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+        
+        /* Enhanced Text Colors */
+        .light .text-primary {
+            color: #1a202c !important;
+        }
+        
+        .light .text-secondary {
+            color: #2d3748 !important;
+        }
+        
+        .light .text-muted {
+            color: #4a5568 !important;
+        }
+        
+        .dark .text-primary {
+            color: #ffffff !important;
+        }
+        
+        .dark .text-secondary {
+            color: #e2e8f0 !important;
+        }
+        
+        .dark .text-muted {
+            color: #a0aec0 !important;
+        }
+        
+        /* Enhanced Card Hover Effects */
+        .card-hover {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .card-hover:hover {
+            transform: translateY(-4px) scale(1.02);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+        }
+        
+        .dark .card-hover:hover {
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+        }
+        
+        /* Enhanced Button Styles */
+        .btn-primary {
+            background: linear-gradient(135deg, #ff6b6b, #ee5a52);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .btn-primary::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: left 0.5s;
+        }
+        
+        .btn-primary:hover::before {
+            left: 100%;
+        }
+        
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #ee5a52, #ff6b6b);
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(255, 107, 107, 0.4);
+        }
+        
+        /* Enhanced Progress Bar */
+        .progress-bar {
+            background: rgba(255, 255, 255, 0.1);
+            height: 8px;
+            border-radius: 4px;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .light .progress-bar {
+            background: rgba(0, 0, 0, 0.1);
+        }
+        
+        .progress-fill {
+            background: linear-gradient(90deg, #ff6b6b, #ee5a52);
+            height: 100%;
+            transition: width 1.5s ease-in-out;
+            border-radius: 4px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .progress-fill::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            right: 0;
+            background-image: linear-gradient(
+                -45deg,
+                rgba(255, 255, 255, .2) 25%,
+                transparent 25%,
+                transparent 50%,
+                rgba(255, 255, 255, .2) 50%,
+                rgba(255, 255, 255, .2) 75%,
+                transparent 75%,
+                transparent
+            );
+            background-size: 50px 50px;
+            animation: shimmer 2s linear infinite;
+        }
+        
+        /* Loading Spinner */
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+        
+        /* Fixed Positioning Elements */
+        .floating-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000;
+            animation: bounce-slow 3s infinite;
+        }
+        
+        .theme-toggle {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+        
+        /* Enhanced Neon Text Effect */
+        .neon-text {
+            text-shadow: 0 0 10px currentColor, 0 0 20px currentColor, 0 0 30px currentColor;
+        }
+        
+        .light .neon-text {
+            text-shadow: 0 0 5px rgba(0, 0, 0, 0.3);
+        }
+        
+        /* Item Display Styles */
+        .item-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 1rem;
+        }
+        
+        .item-card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 12px;
+            padding: 1rem;
+            text-align: center;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .light .item-card {
+            background: rgba(255, 255, 255, 0.8);
+            border: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        
+        .item-card:hover {
+            transform: translateY(-2px) scale(1.05);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+            border-color: rgba(255, 255, 255, 0.4);
+        }
+        
+        .light .item-card:hover {
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            border-color: rgba(0, 0, 0, 0.2);
+        }
+        
+        /* Shimmer Effect for Cards */
+        .item-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+            transition: left 0.5s;
+        }
+        
+        .item-card:hover::before {
+            left: 100%;
+        }
+        
+        /* Mobile Optimizations */
+        @media (max-width: 768px) {
+            .floating-btn {
+                bottom: 15px;
+                right: 15px;
+            }
+            
+            .theme-toggle {
+                top: 15px;
+                right: 15px;
+            }
+            
+            .item-grid {
+                grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+                gap: 0.75rem;
+            }
+            
+            .card-hover:hover {
+                transform: translateY(-1px) scale(1.01);
+            }
+            
+            .animate-gradient {
+                animation-duration: 20s;
+            }
+            
+            .animate-float {
+                animation-duration: 8s;
+            }
+        }
+        
+        /* Enhanced Dark Mode Styles */
+        .dark .glass-light {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+        
+        /* Light Mode Input Styles */
+        .light input, .light select {
+            background: rgba(255, 255, 255, 0.9) !important;
+            color: #1a202c !important;
+            border-color: rgba(0, 0, 0, 0.2) !important;
+        }
+        
+        .light input::placeholder {
+            color: #4a5568 !important;
+        }
+        
+        .light option {
+            background: #ffffff !important;
+            color: #1a202c !important;
+        }
+        
+        /* Smooth Transitions for Theme Switching */
+        * {
+            transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
+        }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 107, 107, 0.5);
+            border-radius: 3px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 107, 107, 0.7);
+        }
+        
+        /* Performance Optimizations */
+        .will-change-transform {
+            will-change: transform;
+        }
+        
+        .gpu-accelerated {
+            transform: translateZ(0);
+            backface-visibility: hidden;
+            perspective: 1000px;
+        }
+        
+        /* Notification Styles */
+        .notification {
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        /* Enhanced Mobile Menu */
+        .mobile-menu {
+            position: fixed;
+            top: 0;
+            left: -100%;
+            width: 80%;
+            height: 100vh;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            transition: left 0.3s ease;
+            z-index: 9999;
+        }
+        
+        .dark .mobile-menu {
+            background: rgba(0, 0, 0, 0.95);
+        }
+        
+        .mobile-menu.open {
+            left: 0;
+        }
+        
+        .mobile-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 9998;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+        
+        .mobile-overlay.open {
+            opacity: 1;
+            visibility: visible;
+        }
+        
+        /* Typing Animation */
+        .typing-text {
+            overflow: hidden;
+            border-right: .15em solid orange;
+            white-space: nowrap;
+            margin: 0 auto;
+            letter-spacing: .15em;
+            animation: typing 3.5s steps(40, end), blink-caret .75s step-end infinite;
+        }
+        
+        /* Particle Effect */
+        .particles {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            pointer-events: none;
+        }
+        
+        .particle {
+            position: absolute;
+            display: block;
+            pointer-events: none;
+            width: 4px;
+            height: 4px;
+            background: rgba(255, 107, 107, 0.6);
+            border-radius: 50%;
+            animation: float 6s ease-in-out infinite;
+        }
+        
+        /* Reduce Motion for Accessibility */
+        @media (prefers-reduced-motion: reduce) {
+            * {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+        
+        /* Print Styles */
+        @media print {
+            .floating-btn, .theme-toggle, .mobile-menu, .mobile-overlay {
+                display: none !important;
+            }
+            
+            body {
+                background: white !important;
+                color: black !important;
+            }
+            
+            .glass-light, .glass-dark {
+                background: white !important;
+                border: 1px solid #ccc !important;
+                box-shadow: none !important;
+            }
+        }
+        
+        /* High Contrast Mode Support */
+        @media (prefers-contrast: high) {
+            .glass-light, .glass-dark {
+                border-width: 2px;
+            }
+            
+            .light .text-primary {
+                color: #000000 !important;
+            }
+            
+            .light .text-secondary {
+                color: #333333 !important;
+            }
+        }
+        
+        /* Enhanced Rank Badge Styles */
+        .rank-badge {
+            background: linear-gradient(135deg, #ffd700, #ffed4e);
+            color: #1a202c;
+            padding: 0.5rem 1rem;
+            border-radius: 9999px;
+            font-weight: bold;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 4px 15px rgba(255, 215, 0, 0.3);
+            animation: glow 2s ease-in-out infinite alternate;
+        }
+        
+        /* Stats Counter Animation */
+        .counter {
+            font-variant-numeric: tabular-nums;
+        }
+        
+        /* Enhanced Loading States */
+        .skeleton {
+            background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+        }
+        
+        .dark .skeleton {
+            background: linear-gradient(90deg, #2d3748 25%, #4a5568 50%, #2d3748 75%);
+            background-size: 200% 100%;
+        }
+    </style>
+</head>
+
+<body class="min-h-screen transition-all duration-300 light-gradient dark:dark-gradient relative overflow-x-hidden">
+    <!-- Particle Background -->
+    <div class="particles" id="particles"></div>
+    
+    <!-- Mobile Menu Overlay -->
+    <div class="mobile-overlay" id="mobileOverlay" onclick="closeMobileMenu()"></div>
+    
+    <!-- Mobile Menu -->
+    <div class="mobile-menu" id="mobileMenu">
+        <div class="p-6">
+            <div class="flex justify-between items-center mb-8">
+                <h2 class="text-xl font-bold text-gray-800 dark:text-white">Menu</h2>
+                <button onclick="closeMobileMenu()" class="text-gray-800 dark:text-white text-2xl hover:scale-110 transition-transform">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <nav class="space-y-4">
+                <a href="#search" onclick="closeMobileMenu()" class="block text-gray-800 dark:text-white hover:text-orange-500 transition-colors p-3 rounded-lg hover:bg-orange-500/10">
+                    <i class="fas fa-search mr-3"></i>Player Search
+                </a>
+                <a href="#stats" onclick="closeMobileMenu()" class="block text-gray-800 dark:text-white hover:text-orange-500 transition-colors p-3 rounded-lg hover:bg-orange-500/10">
+                    <i class="fas fa-chart-bar mr-3"></i>Statistics
+                </a>
+                <a href="#features" onclick="closeMobileMenu()" class="block text-gray-800 dark:text-white hover:text-orange-500 transition-colors p-3 rounded-lg hover:bg-orange-500/10">
+                    <i class="fas fa-star mr-3"></i>Features
+                </a>
+                <a href="https://t.me/abdullahmods22" target="_blank" onclick="closeMobileMenu()" class="block text-gray-800 dark:text-white hover:text-orange-500 transition-colors p-3 rounded-lg hover:bg-orange-500/10">
+                    <i class="fab fa-telegram mr-3"></i>Join Community
+                </a>
+                <button onclick="toggleTheme(); closeMobileMenu();" class="block w-full text-left text-gray-800 dark:text-white hover:text-orange-500 transition-colors p-3 rounded-lg hover:bg-orange-500/10">
+                    <i class="fas fa-moon dark:hidden mr-3"></i>
+                    <i class="fas fa-sun hidden dark:inline mr-3"></i>
+                    <span class="dark:hidden">Dark Mode</span>
+                    <span class="hidden dark:inline">Light Mode</span>
+                </button>
+            </nav>
+        </div>
+    </div>
+    
+    <!-- Mobile Menu Button -->
+    <div class="md:hidden fixed top-4 left-4 z-50">
+        <button onclick="openMobileMenu()" class="glass-light dark:glass-dark p-3 rounded-full text-gray-800 dark:text-white hover:scale-110 transition-all duration-300 shadow-lg">
+            <i class="fas fa-bars text-lg"></i>
+        </button>
+    </div>
+    
+    <!-- Theme Toggle Button -->
+    <div class="theme-toggle">
+        <button onclick="toggleTheme()" class="glass-light dark:glass-dark p-3 rounded-full text-gray-800 dark:text-white hover:scale-110 transition-all duration-300 will-change-transform shadow-lg" title="Toggle Theme">
+            <i class="fas fa-moon dark:hidden text-lg"></i>
+            <i class="fas fa-sun hidden dark:inline text-lg"></i>
+        </button>
+    </div>
+
+    <!-- Floating Action Buttons -->
+    <div class="floating-btn">
+        <div class="flex flex-col space-y-3">
+            <!-- Telegram Button -->
+            <a href="https://t.me/abdullahmods22" target="_blank" class="bg-blue-500 hover:bg-blue-600 text-white p-3 rounded-full shadow-lg hover:shadow-xl transition-all duration-300 will-change-transform hover:scale-110" title="Join Telegram">
+                <i class="fab fa-telegram-plane text-lg"></i>
+            </a>
+            
+            <!-- Scroll to Top Button -->
+            <button onclick="scrollToTop()" class="bg-orange-500 hover:bg-orange-600 text-white p-3 rounded-full shadow-lg hover:shadow-xl transition-all duration-300 will-change-transform hidden hover:scale-110" id="scrollTopBtn" title="Scroll to Top">
+                <i class="fas fa-arrow-up text-lg"></i>
+            </button>
+            
+            <!-- Quick Search Button -->
+            <button onclick="focusSearch()" class="bg-green-500 hover:bg-green-600 text-white p-3 rounded-full shadow-lg hover:shadow-xl transition-all duration-300 will-change-transform hover:scale-110" title="Quick Search">
+                <i class="fas fa-search text-lg"></i>
+            </button>
+            
+            <!-- Random Player Button -->
+            <button onclick="randomPlayer()" class="bg-purple-500 hover:bg-purple-600 text-white p-3 rounded-full shadow-lg hover:shadow-xl transition-all duration-300 will-change-transform hover:scale-110" title="Random Player">
+                <i class="fas fa-random text-lg"></i>
+            </button>
+        </div>
+    </div>
+
+    <div class="container mx-auto px-4 py-6 max-w-6xl relative z-10">
+        <!-- Header Section -->
+        <div class="text-center mb-8 animate-fade-in" id="header">
+            <div class="inline-block glass-light dark:glass-dark p-6 rounded-full mb-6 animate-float gpu-accelerated shadow-2xl">
+                <i class="fas fa-fire text-5xl md:text-6xl text-orange-500 animate-wiggle"></i>
+            </div>
+            <h1 class="font-orbitron text-3xl md:text-5xl lg:text-6xl font-black text-gray-900 dark:text-white mb-4 neon-text">
+                FREE FIRE
+                <span class="block text-transparent bg-clip-text bg-gradient-to-r from-orange-400 via-red-500 to-pink-500 typing-text">
+                    PLAYER LOOKUP
+                </span>
+            </h1>
+            <p class="text-lg md:text-xl text-gray-800 dark:text-gray-300 max-w-3xl mx-auto leading-relaxed mb-6">
+                🔥 Advanced Free Fire player statistics and information lookup tool
+                <br><span class="text-base text-gray-700 dark:text-gray-400">Powered by NepDevs - Real-time data from all regions</span>
+            </p>
+            
+            <!-- Enhanced Stats Pills -->
+            <div class="flex flex-wrap justify-center gap-3 md:gap-4 mb-6">
+                <div class="glass-light dark:glass-dark px-4 py-2 rounded-full animate-scale-in hover:scale-105 transition-transform cursor-pointer">
+                    <i class="fas fa-users text-blue-500 mr-2"></i>
+                    <span class="text-gray-900 dark:text-white font-semibold text-sm md:text-base counter" data-target="100000000">0</span>
+                    <span class="text-gray-900 dark:text-white font-semibold text-sm md:text-base">+ Players</span>
+                </div>
+                <div class="glass-light dark:glass-dark px-4 py-2 rounded-full animate-scale-in hover:scale-105 transition-transform cursor-pointer" style="animation-delay: 0.1s;">
+                    <i class="fas fa-globe text-green-500 mr-2"></i>
+                    <span class="text-gray-900 dark:text-white font-semibold text-sm md:text-base counter" data-target="15">0</span>
+                    <span class="text-gray-900 dark:text-white font-semibold text-sm md:text-base">+ Regions</span>
+                </div>
+                <div class="glass-light dark:glass-dark px-4 py-2 rounded-full animate-scale-in hover:scale-105 transition-transform cursor-pointer" style="animation-delay: 0.2s;">
+                    <i class="fas fa-bolt text-yellow-500 mr-2"></i>
+                    <span class="text-gray-900 dark:text-white font-semibold text-sm md:text-base">Real-time</span>
+                </div>
+                <div class="glass-light dark:glass-dark px-4 py-2 rounded-full animate-scale-in hover:scale-105 transition-transform cursor-pointer" style="animation-delay: 0.3s;">
+                    <i class="fas fa-shield-alt text-purple-500 mr-2"></i>
+                    <span class="text-gray-900 dark:text-white font-semibold text-sm md:text-base">Secure</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Search Form -->
+        <div class="max-w-2xl mx-auto mb-8 animate-slide-up" id="search">
+            <div class="glass-light dark:glass-dark rounded-2xl p-6 md:p-8 card-hover shadow-2xl">
+                <div class="text-center mb-6">
+                    <h2 class="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white mb-2">🎯 Player Search</h2>
+                    <p class="text-gray-700 dark:text-gray-400">Enter player details to view comprehensive statistics</p>
+                </div>
+                
+                <form method="POST" class="space-y-6" id="searchForm">
+                    <div class="space-y-4">
+                        <!-- Region Selection -->
+                        <div>
+                            <label for="region" class="block text-gray-900 dark:text-white font-semibold text-lg mb-3">
+                                <i class="fas fa-globe-americas mr-2 text-blue-500"></i>Server Region
+                            </label>
+                            <select class="w-full px-4 py-4 bg-white/90 dark:bg-white/10 border-2 border-gray-300 dark:border-white/20 rounded-xl text-gray-900 dark:text-white focus:outline-none focus:ring-4 focus:ring-orange-400/50 focus:border-orange-400 backdrop-blur-sm text-base font-medium transition-all duration-300 hover:border-orange-300" 
+                                    id="region" name="region" required>
+                                <option value="" class="text-gray-900 bg-white dark:bg-gray-800 dark:text-white">🎯 Choose your server region...</option>
+                                <?php foreach ($servers as $code => $name): ?>
+                                    <option value="<?= $code ?>" class="text-gray-900 bg-white dark:bg-gray-800 dark:text-white" <?= (isset($_POST['region']) && $_POST['region'] === $code) ? 'selected' : '' ?>>
+                                        🌐 <?= $name ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        
+                        <!-- UID Input -->
+                        <div>
+                            <label for="uid" class="block text-gray-900 dark:text-white font-semibold text-lg mb-3">
+                                <i class="fas fa-user-tag mr-2 text-green-500"></i>Player UID
+                            </label>
+                            <input type="text" 
+                                   class="w-full px-4 py-4 bg-white/90 dark:bg-white/10 border-2 border-gray-300 dark:border-white/20 rounded-xl text-gray-900 dark:text-white placeholder-gray-600 dark:placeholder-gray-400 focus:outline-none focus:ring-4 focus:ring-green-400/50 focus:border-green-400 backdrop-blur-sm text-base font-medium transition-all duration-300 hover:border-green-300" 
+                                   id="uid" name="uid" 
+                                   placeholder="🔢 Enter 9-12 digit UID" 
+                                   value="<?= htmlspecialchars($_POST['uid'] ?? '') ?>" 
+                                   pattern="[0-9]{9,12}"
+                                   required>
+                        </div>
+                    </div>
+                    
+                    <div class="text-center">
+                        <button type="submit" class="btn-primary text-white font-bold py-4 px-8 md:px-12 rounded-xl text-lg shadow-lg hover:shadow-xl transform transition-all duration-300 relative overflow-hidden w-full md:w-auto will-change-transform" id="searchBtn">
+                            <i class="fas fa-search mr-3 text-xl"></i>
+                            <span id="btnText" class="font-orbitron">🚀 SEARCH PLAYER</span>
+                            <div id="btnLoading" class="loading-spinner ml-3 hidden"></div>
+                        </button>
+                    </div>
+                </form>
+                
+                <!-- Quick Search Suggestions -->
+                <div class="mt-6 text-center">
+                    <p class="text-gray-600 dark:text-gray-400 text-sm mb-3">💡 Quick Tips:</p>
+                    <div class="flex flex-wrap justify-center gap-2">
+                        <span class="bg-blue-500/20 text-blue-800 dark:text-blue-200 px-3 py-1 rounded-full text-xs hover:bg-blue-500/30 transition-colors cursor-pointer">UID must be 9-12 digits</span>
+                        <span class="bg-green-500/20 text-green-800 dark:text-green-200 px-3 py-1 rounded-full text-xs hover:bg-green-500/30 transition-colors cursor-pointer">Select correct region</span>
+                        <span class="bg-purple-500/20 text-purple-800 dark:text-purple-200 px-3 py-1 rounded-full text-xs hover:bg-purple-500/30 transition-colors cursor-pointer">Real-time data</span>
+                    </div>
+                </div>
+                
+                <!-- Recent Searches -->
+                <div class="mt-6" id="recentSearches" style="display: none;">
+                    <p class="text-gray-600 dark:text-gray-400 text-sm mb-3">🕒 Recent Searches:</p>
+                    <div class="flex flex-wrap gap-2" id="recentSearchesList">
+                        <!-- Recent searches will be populated here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <?php if ($error): ?>
+            <!-- Enhanced Error Message -->
+            <div class="max-w-2xl mx-auto mb-8 animate-slide-up">
+                <div class="bg-red-500/20 border-2 border-red-500/40 text-red-900 dark:text-red-200 p-6 rounded-2xl backdrop-blur-sm shadow-lg">
+                    <div class="flex items-center">
+                        <i class="fas fa-exclamation-triangle text-red-500 text-3xl mr-4 animate-bounce"></i>
+                        <div>
+                            <h3 class="font-bold text-xl mb-2">⚠️ Error Occurred</h3>
+                            <p class="text-lg"><?= htmlspecialchars($error) ?></p>
+                            <div class="mt-4 flex gap-3">
+                                <button onclick="retrySearch()" class="bg-red-500/30 text-red-800 dark:text-red-200 px-4 py-2 rounded-full text-sm hover:bg-red-500/50 transition-all font-semibold">
+                                    <i class="fas fa-redo mr-2"></i>Try Again
+                                </button>
+                                <button onclick="clearForm()" class="bg-gray-500/30 text-gray-800 dark:text-gray-200 px-4 py-2 rounded-full text-sm hover:bg-gray-500/50 transition-all font-semibold">
+                                    <i class="fas fa-times mr-2"></i>Clear Form
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        <?php endif; ?>
+
+        <?php if ($playerData && isset($playerData['AccountInfo'])): ?>
+            <!-- Enhanced Player Profile Header -->
+            <div class="mb-8 animate-fade-in" id="stats">
+                <div class="glass-light dark:glass-dark rounded-2xl p-6 md:p-8 card-hover shadow-2xl">
+                    <div class="flex flex-col md:flex-row items-center md:items-start space-y-6 md:space-y-0 md:space-x-8">
+                        <div class="flex-shrink-0">
+                            <?php 
+                            $avatarDetail = getSingleItemDetail($playerData['AccountInfo']['AccountAvatarId'], 'Avatar');
+                            ?>
+                            <div class="relative">
+                                <?= displayItemWithIcon($avatarDetail, 'fas fa-user', 'w-24 h-24 md:w-32 md:h-32') ?>
+                                <div class="absolute -bottom-2 -right-2 bg-yellow-500 text-white rounded-full w-8 h-8 flex items-center justify-center text-sm font-bold animate-bounce-slow shadow-lg">
+                                    <?= $playerData['AccountInfo']['AccountLevel'] ?>
+                                </div>
+                                <!-- Online Status Indicator -->
+                                <div class="absolute -top-2 -left-2 bg-green-500 rounded-full w-6 h-6 flex items-center justify-center animate-pulse shadow-lg">
+                                    <i class="fas fa-circle text-white text-xs"></i>
+                                </div>
+                                <!-- Premium Badge -->
+                                <?php if ($playerData['AccountInfo']['AccountType'] == 1): ?>
+                                <div class="absolute top-0 right-0 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs animate-pulse">
+                                    <i class="fas fa-crown"></i>
+                                </div>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                        <div class="flex-grow text-center md:text-left">
+                            <h2 class="font-orbitron text-2xl md:text-4xl lg:text-5xl font-black text-gray-900 dark:text-white mb-4 neon-text">
+                                <?= htmlspecialchars($playerData['AccountInfo']['AccountName']) ?>
+                            </h2>
+                            <div class="flex flex-wrap justify-center md:justify-start gap-2 md:gap-3 mb-4">
+                                <span class="bg-blue-500/30 text-blue-900 dark:text-blue-200 px-3 py-2 rounded-full text-sm font-bold backdrop-blur-sm hover:bg-blue-500/40 transition-colors">
+                                    <i class="fas fa-level-up-alt mr-1"></i>Level <?= $playerData['AccountInfo']['AccountLevel'] ?>
+                                </span>
+                                <span class="bg-green-500/30 text-green-900 dark:text-green-200 px-3 py-2 rounded-full text-sm font-bold backdrop-blur-sm hover:bg-green-500/40 transition-colors">
+                                    <i class="fas fa-map-marker-alt mr-1"></i><?= htmlspecialchars($playerData['AccountInfo']['AccountRegion']) ?>
+                                </span>
+                                <span class="bg-purple-500/30 text-purple-900 dark:text-purple-200 px-3 py-2 rounded-full text-sm font-bold backdrop-blur-sm hover:bg-purple-500/40 transition-colors">
+                                    <i class="fas fa-gamepad mr-1"></i><?= htmlspecialchars($playerData['AccountInfo']['ReleaseVersion']) ?>
+                                </span>
+                                <span class="bg-orange-500/30 text-orange-900 dark:text-orange-200 px-3 py-2 rounded-full text-sm font-bold backdrop-blur-sm hover:bg-orange-500/40 transition-colors">
